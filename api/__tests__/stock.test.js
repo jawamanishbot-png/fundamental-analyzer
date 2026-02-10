@@ -122,14 +122,33 @@ describe('API handler: /api/stock/[ticker]', () => {
     expect(res.headers['Cache-Control']).toBe('public, max-age=300')
   })
 
-  it('returns 500 when FMP API fails', async () => {
+  it('returns 404 when FMP API is unreachable', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Network error'))
 
     const res = mockRes()
     await handler(mockReq('GET', { ticker: 'AAPL' }), res)
 
-    expect(res.statusCode).toBe(500)
-    expect(res.body).toEqual({ error: 'Failed to fetch company data' })
+    expect(res.statusCode).toBe(404)
+    expect(res.body).toEqual({ error: 'Company not found' })
+  })
+
+  it('returns partial data when non-critical endpoints fail', async () => {
+    // Profile succeeds, everything else fails
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      if (url.includes('/profile/')) return { ok: true, json: async () => [{ companyName: 'Test Corp', industry: 'Tech', mktCap: 1e9, price: 50 }] }
+      throw new Error('Endpoint unavailable')
+    })
+
+    const res = mockRes()
+    await handler(mockReq('GET', { ticker: 'TEST' }), res)
+
+    expect(res.statusCode).toBe(200)
+    expect(res.body.name).toBe('Test Corp')
+    expect(res.body.currentPrice).toBe(50)
+    // Non-critical fields should be null/empty, not crash
+    expect(res.body.revenueGrowth).toBeNull()
+    expect(res.body.freeCashFlow).toBeNull()
+    expect(res.body.priceHistory).toEqual([])
   })
 
   it('handles missing earnings gracefully', async () => {

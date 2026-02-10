@@ -12,36 +12,50 @@ export function createFMPFetcher(apiKey) {
 }
 
 export async function aggregateStockData(ticker, fetchJSON) {
-  // 1. Company profile (required)
-  const profileData = await fetchJSON(`/profile/${ticker}`)
+  // 1. Company profile (required – without it we can't return anything useful)
+  let profileData
+  try {
+    profileData = await fetchJSON(`/profile/${ticker}`)
+  } catch {
+    return null
+  }
   if (!profileData?.length) return null
 
   const profile = profileData[0]
 
   // 2. Income statement – revenue growth + profitability margins
-  const incomeData = await fetchJSON(`/income-statement/${ticker}?limit=5`)
-  const latestIncome = incomeData?.[0] || {}
-  const revenues = incomeData?.map(i => i.revenue).filter(Boolean) || []
-  const revenueGrowth = revenues.length >= 2
-    ? ((revenues[0] - revenues[1]) / revenues[1]) * 100
-    : null
+  let latestIncome = {}
+  let revenueGrowth = null
+  let grossMargin = null
+  let operatingMargin = null
+  let netMargin = null
+  let eps = null
+  let revenueHistory = []
+  try {
+    const incomeData = await fetchJSON(`/income-statement/${ticker}?limit=5`)
+    latestIncome = incomeData?.[0] || {}
+    const revenues = incomeData?.map(i => i.revenue).filter(Boolean) || []
+    revenueGrowth = revenues.length >= 2
+      ? ((revenues[0] - revenues[1]) / revenues[1]) * 100
+      : null
 
-  const grossMargin = latestIncome.revenue && latestIncome.grossProfit
-    ? (latestIncome.grossProfit / latestIncome.revenue) * 100
-    : null
-  const operatingMargin = latestIncome.revenue && latestIncome.operatingIncome
-    ? (latestIncome.operatingIncome / latestIncome.revenue) * 100
-    : null
-  const netMargin = latestIncome.revenue && latestIncome.netIncome
-    ? (latestIncome.netIncome / latestIncome.revenue) * 100
-    : null
-  const eps = latestIncome.eps ?? null
+    grossMargin = latestIncome.revenue && latestIncome.grossProfit
+      ? (latestIncome.grossProfit / latestIncome.revenue) * 100
+      : null
+    operatingMargin = latestIncome.revenue && latestIncome.operatingIncome
+      ? (latestIncome.operatingIncome / latestIncome.revenue) * 100
+      : null
+    netMargin = latestIncome.revenue && latestIncome.netIncome
+      ? (latestIncome.netIncome / latestIncome.revenue) * 100
+      : null
+    eps = latestIncome.eps ?? null
 
-  // Build revenue history (most recent 5, reversed to chronological)
-  const revenueHistory = incomeData
-    ?.filter(i => i.revenue && i.calendarYear)
-    .map(i => ({ year: i.calendarYear, revenue: i.revenue }))
-    .reverse() || []
+    // Build revenue history (most recent 5, reversed to chronological)
+    revenueHistory = incomeData
+      ?.filter(i => i.revenue && i.calendarYear)
+      .map(i => ({ year: i.calendarYear, revenue: i.revenue }))
+      .reverse() || []
+  } catch { /* income statement not critical */ }
 
   // 3. Balance sheet – financial health
   let debtToEquity = null
@@ -88,8 +102,11 @@ export async function aggregateStockData(ticker, fetchJSON) {
   } catch { /* cash flow not critical */ }
 
   // 5. Quote – current market data
-  const quoteData = await fetchJSON(`/quote/${ticker}`)
-  const quote = quoteData?.[0] || {}
+  let quote = {}
+  try {
+    const quoteData = await fetchJSON(`/quote/${ticker}`)
+    quote = quoteData?.[0] || {}
+  } catch { /* quote not critical – fall back to profile data */ }
 
   // 6. Historical prices (30 trading days for sparkline)
   let priceHistory = []

@@ -1,3 +1,15 @@
+import Sparkline from './Sparkline'
+
+function formatLargeNumber(num) {
+  if (num == null) return 'N/A'
+  const abs = Math.abs(num)
+  const sign = num < 0 ? '-' : ''
+  if (abs >= 1e12) return `${sign}$${(abs / 1e12).toFixed(2)}T`
+  if (abs >= 1e9) return `${sign}$${(abs / 1e9).toFixed(2)}B`
+  if (abs >= 1e6) return `${sign}$${(abs / 1e6).toFixed(1)}M`
+  return `$${num.toLocaleString()}`
+}
+
 export default function CompanyCard({ company, onAddToWatchlist, isInWatchlist }) {
   const getValuation = () => {
     if (!company.forwardPE) return null
@@ -33,6 +45,10 @@ export default function CompanyCard({ company, onAddToWatchlist, isInWatchlist }
 
   const colors = valuation ? colorMap[valuation.color] : null
 
+  const hasFinancialHealth = company.debtToEquity != null || company.currentRatio != null
+  const hasProfitability = company.grossMargin != null || company.operatingMargin != null || company.netMargin != null
+  const hasCashFlow = company.freeCashFlow != null || company.operatingCashFlow != null
+
   return (
     <div className="space-y-3 stagger-children">
       {/* Company Header */}
@@ -52,7 +68,12 @@ export default function CompanyCard({ company, onAddToWatchlist, isInWatchlist }
                 )}
               </div>
               <p className="text-slate-300 text-sm font-medium">{company.name}</p>
-              <p className="text-slate-500 text-xs mt-0.5">{company.industry || 'Unknown Sector'}</p>
+              <div className="flex items-center gap-2 mt-0.5">
+                <p className="text-slate-500 text-xs">{company.industry || 'Unknown Sector'}</p>
+                {company.sector && company.sector !== company.industry && (
+                  <span className="text-slate-600 text-xs">/ {company.sector}</span>
+                )}
+              </div>
             </div>
           </div>
           <button
@@ -83,37 +104,59 @@ export default function CompanyCard({ company, onAddToWatchlist, isInWatchlist }
         </div>
       </div>
 
-      {/* Price & Target Section */}
+      {/* Price & Sparkline Section */}
       {company.currentPrice && (
         <div className="bg-slate-800/50 border border-slate-700/30 rounded-2xl p-5">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-start justify-between mb-4">
             <div>
               <p className="text-[11px] text-slate-500 font-medium uppercase tracking-wider mb-1">Current Price</p>
-              <p className="text-3xl font-extrabold text-white tracking-tight">${company.currentPrice.toFixed(2)}</p>
+              <div className="flex items-baseline gap-2">
+                <p className="text-3xl font-extrabold text-white tracking-tight">${company.currentPrice.toFixed(2)}</p>
+                {company.dayChange != null && (
+                  <span className={`text-sm font-bold ${company.dayChange >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {company.dayChange >= 0 ? '+' : ''}{company.dayChange.toFixed(2)} ({company.dayChangePercent != null ? `${company.dayChangePercent.toFixed(2)}%` : ''})
+                  </span>
+                )}
+              </div>
             </div>
-            {upside !== null && (
-              <div className={`text-right ${upside >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                <p className="text-[11px] font-medium uppercase tracking-wider opacity-70 mb-1">Upside</p>
-                <div className="flex items-center gap-1">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    {upside >= 0 ? (
-                      <polyline points="18 15 12 9 6 15" />
-                    ) : (
-                      <polyline points="6 9 12 15 18 9" />
-                    )}
-                  </svg>
-                  <span className="text-2xl font-extrabold">{upside >= 0 ? '+' : ''}{upside.toFixed(1)}%</span>
-                </div>
+            {/* 30-day sparkline */}
+            {company.priceHistory?.length > 1 && (
+              <div className="flex-shrink-0">
+                <p className="text-[10px] text-slate-600 text-right mb-1">30 days</p>
+                <Sparkline data={company.priceHistory} width={120} height={40} />
               </div>
             )}
           </div>
+
+          {/* 52-week range */}
+          {company.yearLow != null && company.yearHigh != null && (
+            <div className="mb-4">
+              <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1.5">
+                <span>52W Low: ${company.yearLow.toFixed(2)}</span>
+                <span>52W High: ${company.yearHigh.toFixed(2)}</span>
+              </div>
+              <div className="relative h-1.5 bg-slate-700/50 rounded-full overflow-hidden">
+                <div
+                  className="absolute top-0 left-0 h-full rounded-full bg-gradient-to-r from-slate-500 to-slate-400"
+                  style={{ width: `${Math.min(100, Math.max(0, ((company.currentPrice - company.yearLow) / (company.yearHigh - company.yearLow)) * 100))}%` }}
+                />
+              </div>
+            </div>
+          )}
 
           {/* Price Target Bar */}
           {company.priceTarget && (
             <div>
               <div className="flex items-center justify-between text-[11px] text-slate-500 mb-2">
                 <span>$0</span>
-                <span className="font-medium text-slate-400">Target: ${company.priceTarget.toFixed(2)}</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-slate-400">Target: ${company.priceTarget.toFixed(2)}</span>
+                  {upside !== null && (
+                    <span className={`font-bold ${upside >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      ({upside >= 0 ? '+' : ''}{upside.toFixed(1)}%)
+                    </span>
+                  )}
+                </div>
               </div>
               <div className="relative h-2.5 bg-slate-700/50 rounded-full overflow-hidden">
                 <div
@@ -122,7 +165,6 @@ export default function CompanyCard({ company, onAddToWatchlist, isInWatchlist }
                   }`}
                   style={{ width: `${priceProgress}%` }}
                 />
-                {/* Target marker */}
                 <div className="absolute top-1/2 -translate-y-1/2 right-0 w-0.5 h-4 bg-slate-400 rounded-full" />
               </div>
             </div>
@@ -134,20 +176,13 @@ export default function CompanyCard({ company, onAddToWatchlist, isInWatchlist }
       {valuation && (
         <div className={`${colors.bg} border ${colors.border} rounded-2xl p-5`}>
           <div className="flex items-center gap-5">
-            {/* Ring Gauge */}
             <div className="relative w-20 h-20 flex-shrink-0 gauge-ring">
               <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
                 <circle cx="18" cy="18" r="15.5" fill="none" stroke="#1e293b" strokeWidth="3" />
                 <circle
-                  cx="18"
-                  cy="18"
-                  r="15.5"
-                  fill="none"
-                  className={colors.ring}
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                  strokeDasharray={`${valuation.score} ${100 - valuation.score}`}
-                  strokeDashoffset="0"
+                  cx="18" cy="18" r="15.5" fill="none"
+                  className={colors.ring} strokeWidth="3" strokeLinecap="round"
+                  strokeDasharray={`${valuation.score} ${100 - valuation.score}`} strokeDashoffset="0"
                 />
               </svg>
               <div className="absolute inset-0 flex items-center justify-center">
@@ -163,67 +198,126 @@ export default function CompanyCard({ company, onAddToWatchlist, isInWatchlist }
         </div>
       )}
 
-      {/* Metrics Grid */}
-      <div className="grid grid-cols-2 gap-3">
-        <MetricCard
-          label="Forward P/E"
-          value={company.forwardPE ? company.forwardPE.toFixed(2) : 'N/A'}
-          subtitle="Next 12 months"
-          icon={
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-            </svg>
-          }
-        />
-        <MetricCard
-          label="Forward EPS"
-          value={company.forwardEPS ? `$${company.forwardEPS.toFixed(2)}` : 'N/A'}
-          subtitle="Projected"
-          icon={
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" /><polyline points="17 6 23 6 23 12" />
-            </svg>
-          }
-        />
-        <MetricCard
-          label="Next Qtr EPS"
-          value={company.nextQuarterEPS ? `$${company.nextQuarterEPS.toFixed(2)}` : 'N/A'}
-          subtitle="Consensus estimate"
-          icon={
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
-            </svg>
-          }
-        />
-        <MetricCard
-          label="Rev Growth"
-          value={company.revenueGrowth ? `${company.revenueGrowth.toFixed(1)}%` : 'N/A'}
-          subtitle="Year over year"
-          highlight={company.revenueGrowth > 0}
-          icon={
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" />
-            </svg>
-          }
-        />
+      {/* Forward Estimates Grid */}
+      <div>
+        <p className="text-[11px] text-slate-500 font-medium uppercase tracking-wider mb-2 px-1">Forward Estimates</p>
+        <div className="grid grid-cols-2 gap-3">
+          <MetricCard label="Forward P/E" value={company.forwardPE ? company.forwardPE.toFixed(2) : 'N/A'} subtitle="Next 12 months" />
+          <MetricCard label="Forward EPS" value={company.forwardEPS ? `$${company.forwardEPS.toFixed(2)}` : 'N/A'} subtitle="Projected" />
+          <MetricCard label="Next Qtr EPS" value={company.nextQuarterEPS ? `$${company.nextQuarterEPS.toFixed(2)}` : 'N/A'} subtitle="Consensus estimate" />
+          <MetricCard label="Rev Growth" value={company.revenueGrowth ? `${company.revenueGrowth.toFixed(1)}%` : 'N/A'} subtitle="Year over year" highlight={company.revenueGrowth > 0} />
+        </div>
       </div>
 
-      {/* Key Metrics */}
-      {company.marketCap && (
-        <div className="bg-slate-800/50 border border-slate-700/30 rounded-2xl p-5">
-          <p className="text-[11px] text-slate-500 font-medium uppercase tracking-wider mb-3">Key Metrics</p>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-xs text-slate-500 mb-0.5">Market Cap</p>
-              <p className="text-base font-bold text-white">{company.marketCap}</p>
-            </div>
-            <div>
-              <p className="text-xs text-slate-500 mb-0.5">P/E Ratio (TTM)</p>
-              <p className="text-base font-bold text-white">{company.peRatio ? company.peRatio.toFixed(2) : 'N/A'}</p>
-            </div>
+      {/* Profitability */}
+      {hasProfitability && (
+        <div>
+          <p className="text-[11px] text-slate-500 font-medium uppercase tracking-wider mb-2 px-1">Profitability</p>
+          <div className="bg-slate-800/50 border border-slate-700/30 rounded-2xl p-5 space-y-3">
+            {company.grossMargin != null && (
+              <MarginBar label="Gross Margin" value={company.grossMargin} />
+            )}
+            {company.operatingMargin != null && (
+              <MarginBar label="Operating Margin" value={company.operatingMargin} />
+            )}
+            {company.netMargin != null && (
+              <MarginBar label="Net Margin" value={company.netMargin} />
+            )}
+            {company.eps != null && (
+              <div className="flex items-center justify-between pt-2 border-t border-slate-700/30">
+                <span className="text-xs text-slate-500">EPS (TTM)</span>
+                <span className="text-sm font-bold text-white">${company.eps.toFixed(2)}</span>
+              </div>
+            )}
           </div>
         </div>
       )}
+
+      {/* Financial Health */}
+      {hasFinancialHealth && (
+        <div>
+          <p className="text-[11px] text-slate-500 font-medium uppercase tracking-wider mb-2 px-1">Financial Health</p>
+          <div className="grid grid-cols-2 gap-3">
+            {company.debtToEquity != null && (
+              <MetricCard
+                label="Debt / Equity"
+                value={company.debtToEquity.toFixed(2)}
+                subtitle={company.debtToEquity < 1 ? 'Low leverage' : company.debtToEquity < 2 ? 'Moderate' : 'High leverage'}
+                highlight={company.debtToEquity < 1}
+              />
+            )}
+            {company.currentRatio != null && (
+              <MetricCard
+                label="Current Ratio"
+                value={company.currentRatio.toFixed(2)}
+                subtitle={company.currentRatio >= 1.5 ? 'Healthy' : company.currentRatio >= 1 ? 'Adequate' : 'Low'}
+                highlight={company.currentRatio >= 1.5}
+              />
+            )}
+            {company.totalDebt != null && (
+              <MetricCard label="Total Debt" value={formatLargeNumber(company.totalDebt)} />
+            )}
+            {company.totalCash != null && (
+              <MetricCard label="Cash & Equiv." value={formatLargeNumber(company.totalCash)} highlight />
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Cash Flow */}
+      {hasCashFlow && (
+        <div>
+          <p className="text-[11px] text-slate-500 font-medium uppercase tracking-wider mb-2 px-1">Cash Flow</p>
+          <div className="grid grid-cols-2 gap-3">
+            {company.freeCashFlow != null && (
+              <MetricCard
+                label="Free Cash Flow"
+                value={formatLargeNumber(company.freeCashFlow)}
+                subtitle="FCF"
+                highlight={company.freeCashFlow > 0}
+              />
+            )}
+            {company.operatingCashFlow != null && (
+              <MetricCard
+                label="Operating CF"
+                value={formatLargeNumber(company.operatingCashFlow)}
+                subtitle="From operations"
+                highlight={company.operatingCashFlow > 0}
+              />
+            )}
+            {company.capex != null && (
+              <MetricCard
+                label="CapEx"
+                value={formatLargeNumber(company.capex)}
+                subtitle="Capital expenditure"
+              />
+            )}
+            {company.dividendYield != null && (
+              <MetricCard
+                label="Div Yield"
+                value={`${company.dividendYield.toFixed(2)}%`}
+                subtitle="Annual yield"
+                highlight={company.dividendYield > 0}
+              />
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Key Metrics */}
+      <div className="bg-slate-800/50 border border-slate-700/30 rounded-2xl p-5">
+        <p className="text-[11px] text-slate-500 font-medium uppercase tracking-wider mb-3">Key Metrics</p>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+          <KeyMetricRow label="Market Cap" value={company.marketCap || 'N/A'} />
+          <KeyMetricRow label="P/E Ratio (TTM)" value={company.peRatio ? company.peRatio.toFixed(2) : 'N/A'} />
+          {company.beta != null && <KeyMetricRow label="Beta" value={company.beta.toFixed(2)} />}
+          {company.volume != null && <KeyMetricRow label="Volume" value={company.volume.toLocaleString()} />}
+          {company.avgVolume != null && <KeyMetricRow label="Avg Volume" value={company.avgVolume.toLocaleString()} />}
+          {company.bookValuePerShare != null && <KeyMetricRow label="Book Value/Sh" value={`$${company.bookValuePerShare.toFixed(2)}`} />}
+          {company.employees != null && <KeyMetricRow label="Employees" value={Number(company.employees).toLocaleString()} />}
+          {company.exchange && <KeyMetricRow label="Exchange" value={company.exchange} />}
+        </div>
+      </div>
 
       {/* Disclaimer */}
       <p className="text-[10px] text-slate-600 text-center pt-1">
@@ -233,15 +327,44 @@ export default function CompanyCard({ company, onAddToWatchlist, isInWatchlist }
   )
 }
 
-function MetricCard({ label, value, subtitle, icon, highlight }) {
+function MetricCard({ label, value, subtitle, highlight }) {
   return (
     <div className="bg-slate-800/50 border border-slate-700/30 rounded-2xl p-4 hover:border-slate-600/50 transition-colors group">
-      <div className="flex items-center gap-1.5 mb-2">
-        <span className="text-slate-500 group-hover:text-slate-400 transition-colors">{icon}</span>
-        <p className="text-[11px] text-slate-500 font-medium">{label}</p>
-      </div>
+      <p className="text-[11px] text-slate-500 font-medium mb-1.5">{label}</p>
       <p className={`text-lg font-bold ${highlight ? 'text-emerald-400' : 'text-white'}`}>{value}</p>
       {subtitle && <p className="text-[10px] text-slate-600 mt-1">{subtitle}</p>}
+    </div>
+  )
+}
+
+function KeyMetricRow({ label, value }) {
+  return (
+    <div>
+      <p className="text-xs text-slate-500 mb-0.5">{label}</p>
+      <p className="text-sm font-bold text-white">{value}</p>
+    </div>
+  )
+}
+
+function MarginBar({ label, value }) {
+  const clamped = Math.max(0, Math.min(100, value))
+  const isGood = value > 20
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs text-slate-500">{label}</span>
+        <span className={`text-sm font-bold ${isGood ? 'text-emerald-400' : value > 0 ? 'text-white' : 'text-red-400'}`}>
+          {value.toFixed(1)}%
+        </span>
+      </div>
+      <div className="h-1.5 bg-slate-700/50 rounded-full overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-500 ${
+            isGood ? 'bg-emerald-500/70' : value > 0 ? 'bg-slate-400/50' : 'bg-red-500/50'
+          }`}
+          style={{ width: `${clamped}%` }}
+        />
+      </div>
     </div>
   )
 }

@@ -13,10 +13,11 @@ describe('CompanyCard', () => {
     expect(screen.getByText('Technology')).toBeInTheDocument()
   })
 
-  it('renders current price', () => {
+  it('renders current price with day change', () => {
     render(<CompanyCard company={mockCompany} onAddToWatchlist={vi.fn()} isInWatchlist={false} />)
 
     expect(screen.getByText('$195.50')).toBeInTheDocument()
+    expect(screen.getByText(/\+2\.35/)).toBeInTheDocument()
   })
 
   it('renders price target', () => {
@@ -112,7 +113,6 @@ describe('CompanyCard', () => {
     expect(screen.getByText('XYZ')).toBeInTheDocument()
     expect(screen.getByText('XYZ Corp')).toBeInTheDocument()
     expect(screen.getByText('Unknown Sector')).toBeInTheDocument()
-    // All N/A values
     const naValues = screen.getAllByText('N/A')
     expect(naValues.length).toBeGreaterThanOrEqual(4)
   })
@@ -121,6 +121,100 @@ describe('CompanyCard', () => {
     render(<CompanyCard company={mockMinimalCompany} onAddToWatchlist={vi.fn()} isInWatchlist={false} />)
 
     expect(screen.queryByText('Valuation Score')).not.toBeInTheDocument()
+  })
+
+  it('does not render profitability section when margins are null', () => {
+    render(<CompanyCard company={mockMinimalCompany} onAddToWatchlist={vi.fn()} isInWatchlist={false} />)
+
+    expect(screen.queryByText('Profitability')).not.toBeInTheDocument()
+  })
+
+  it('does not render financial health section when balance sheet data is null', () => {
+    render(<CompanyCard company={mockMinimalCompany} onAddToWatchlist={vi.fn()} isInWatchlist={false} />)
+
+    expect(screen.queryByText('Financial Health')).not.toBeInTheDocument()
+  })
+
+  it('does not render cash flow section when cash flow data is null', () => {
+    render(<CompanyCard company={mockMinimalCompany} onAddToWatchlist={vi.fn()} isInWatchlist={false} />)
+
+    expect(screen.queryByText('Cash Flow')).not.toBeInTheDocument()
+  })
+
+  // --- New data section tests ---
+
+  it('renders profitability margin bars', () => {
+    render(<CompanyCard company={mockCompany} onAddToWatchlist={vi.fn()} isInWatchlist={false} />)
+
+    expect(screen.getByText('Profitability')).toBeInTheDocument()
+    expect(screen.getByText('Gross Margin')).toBeInTheDocument()
+    expect(screen.getByText('45.6%')).toBeInTheDocument()
+    expect(screen.getByText('Operating Margin')).toBeInTheDocument()
+    expect(screen.getByText('30.2%')).toBeInTheDocument()
+    expect(screen.getByText('Net Margin')).toBeInTheDocument()
+    expect(screen.getByText('25.3%')).toBeInTheDocument()
+  })
+
+  it('renders EPS in profitability section', () => {
+    render(<CompanyCard company={mockCompany} onAddToWatchlist={vi.fn()} isInWatchlist={false} />)
+
+    expect(screen.getByText('EPS (TTM)')).toBeInTheDocument()
+    expect(screen.getByText('$6.14')).toBeInTheDocument()
+  })
+
+  it('renders financial health metrics', () => {
+    render(<CompanyCard company={mockCompany} onAddToWatchlist={vi.fn()} isInWatchlist={false} />)
+
+    expect(screen.getByText('Financial Health')).toBeInTheDocument()
+    expect(screen.getByText('Debt / Equity')).toBeInTheDocument()
+    expect(screen.getByText('1.87')).toBeInTheDocument()
+    expect(screen.getByText('Current Ratio')).toBeInTheDocument()
+    expect(screen.getByText('0.99')).toBeInTheDocument()
+    expect(screen.getByText('Total Debt')).toBeInTheDocument()
+    expect(screen.getByText('Cash & Equiv.')).toBeInTheDocument()
+  })
+
+  it('renders cash flow metrics', () => {
+    render(<CompanyCard company={mockCompany} onAddToWatchlist={vi.fn()} isInWatchlist={false} />)
+
+    expect(screen.getByText('Cash Flow')).toBeInTheDocument()
+    expect(screen.getByText('Free Cash Flow')).toBeInTheDocument()
+    expect(screen.getByText('Operating CF')).toBeInTheDocument()
+    expect(screen.getByText('CapEx')).toBeInTheDocument()
+  })
+
+  it('renders 52-week range', () => {
+    render(<CompanyCard company={mockCompany} onAddToWatchlist={vi.fn()} isInWatchlist={false} />)
+
+    expect(screen.getByText(/52W Low: \$150\.00/)).toBeInTheDocument()
+    expect(screen.getByText(/52W High: \$220\.00/)).toBeInTheDocument()
+  })
+
+  it('renders beta, volume, exchange in key metrics', () => {
+    render(<CompanyCard company={mockCompany} onAddToWatchlist={vi.fn()} isInWatchlist={false} />)
+
+    expect(screen.getByText('Beta')).toBeInTheDocument()
+    expect(screen.getByText('1.28')).toBeInTheDocument()
+    expect(screen.getByText('Exchange')).toBeInTheDocument()
+    expect(screen.getByText('NASDAQ')).toBeInTheDocument()
+    expect(screen.getByText('Employees')).toBeInTheDocument()
+    expect(screen.getByText('164,000')).toBeInTheDocument()
+  })
+
+  it('renders sparkline when price history exists', () => {
+    const { container } = render(<CompanyCard company={mockCompany} onAddToWatchlist={vi.fn()} isInWatchlist={false} />)
+
+    expect(screen.getByText('30 days')).toBeInTheDocument()
+    // Sparkline renders an SVG
+    const svgs = container.querySelectorAll('svg')
+    expect(svgs.length).toBeGreaterThan(0)
+  })
+
+  it('shows dividend yield when available', () => {
+    render(<CompanyCard company={mockCompany} onAddToWatchlist={vi.fn()} isInWatchlist={false} />)
+
+    expect(screen.getByText('Div Yield')).toBeInTheDocument()
+    expect(screen.getByText('0.49%')).toBeInTheDocument()
   })
 
   it('shows disclaimer text', () => {

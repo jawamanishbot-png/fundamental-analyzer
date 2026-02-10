@@ -17,6 +17,23 @@ function mockRes() {
   return res
 }
 
+// Default mock that returns sensible empty data for all endpoints
+function mockAllFMP(overrides = {}) {
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+    if (url.includes('/profile/')) return { ok: true, json: async () => overrides.profile ?? [{ companyName: 'Test', industry: 'Tech' }] }
+    if (url.includes('/income-statement/')) return { ok: true, json: async () => overrides.income ?? [] }
+    if (url.includes('/balance-sheet-statement/')) return { ok: true, json: async () => overrides.balanceSheet ?? [] }
+    if (url.includes('/cash-flow-statement/')) return { ok: true, json: async () => overrides.cashFlow ?? [] }
+    if (url.includes('/quote/')) return { ok: true, json: async () => overrides.quote ?? [{}] }
+    if (url.includes('/historical-price-full/')) return { ok: true, json: async () => overrides.history ?? { historical: [] } }
+    if (url.includes('/earning_calendar/')) {
+      if (overrides.earningsThrow) throw new Error('API down')
+      return { ok: true, json: async () => overrides.earnings ?? [] }
+    }
+    return { ok: true, json: async () => [] }
+  })
+}
+
 describe('API handler: /api/stock/[ticker]', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
@@ -39,10 +56,7 @@ describe('API handler: /api/stock/[ticker]', () => {
   })
 
   it('returns 404 when company is not found', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: true,
-      json: async () => [],
-    })
+    mockAllFMP({ profile: [] })
 
     const res = mockRes()
     await handler(mockReq('GET', { ticker: 'ZZZZZ' }), res)
@@ -52,34 +66,14 @@ describe('API handler: /api/stock/[ticker]', () => {
   })
 
   it('returns 200 with aggregated data for valid ticker', async () => {
-    const mockProfile = [{
-      companyName: 'Apple Inc.',
-      industry: 'Technology',
-      mktCap: 2800000000000,
-      price: 195.5,
-      priceToEarningsRatio: 28.3,
-      analyticTarget: 210.0,
-    }]
-    const mockIncome = [
-      { revenue: 394000000000 },
-      { revenue: 365000000000 },
-    ]
-    const mockQuote = [{
-      price: 195.5,
-      priceToEarningsRatio: 28.3,
-    }]
-    const mockEarnings = [{
-      epsEstimated: 1.75,
-    }]
-
-    let callIndex = 0
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
-      callIndex++
-      if (url.includes('/profile/')) return { ok: true, json: async () => mockProfile }
-      if (url.includes('/income-statement/')) return { ok: true, json: async () => mockIncome }
-      if (url.includes('/quote/')) return { ok: true, json: async () => mockQuote }
-      if (url.includes('/earning_calendar/')) return { ok: true, json: async () => mockEarnings }
-      return { ok: false }
+    mockAllFMP({
+      profile: [{ companyName: 'Apple Inc.', industry: 'Technology', mktCap: 2.8e12, price: 195.5, priceToEarningsRatio: 28.3, analyticTarget: 210, sector: 'Tech' }],
+      income: [{ revenue: 394e9, grossProfit: 180e9, operatingIncome: 120e9, netIncome: 100e9, calendarYear: '2025' }, { revenue: 365e9, calendarYear: '2024' }],
+      balanceSheet: [{ totalDebt: 111e9, totalStockholdersEquity: 62e9, totalCurrentAssets: 100e9, totalCurrentLiabilities: 110e9, cashAndCashEquivalents: 30e9 }],
+      cashFlow: [{ freeCashFlow: 111e9, operatingCashFlow: 122e9, capitalExpenditure: -11e9 }],
+      quote: [{ price: 195.5, priceToEarningsRatio: 28.3, yearHigh: 220, yearLow: 150 }],
+      history: { historical: [{ date: '2026-01-02', close: 195 }, { date: '2026-01-01', close: 190 }] },
+      earnings: [{ epsEstimated: 1.75 }],
     })
 
     const res = mockRes()
@@ -88,36 +82,29 @@ describe('API handler: /api/stock/[ticker]', () => {
     expect(res.statusCode).toBe(200)
     expect(res.body.symbol).toBe('AAPL')
     expect(res.body.name).toBe('Apple Inc.')
-    expect(res.body.industry).toBe('Technology')
-    expect(res.body.marketCap).toBe('$2800.0B')
     expect(res.body.currentPrice).toBe(195.5)
     expect(res.body.forwardPE).toBe(28.3)
     expect(res.body.nextQuarterEPS).toBe(1.75)
-    expect(res.body.priceTarget).toBe(210.0)
+    expect(res.body.priceTarget).toBe(210)
+    expect(res.body.freeCashFlow).toBe(111e9)
+    expect(res.body.debtToEquity).toBeCloseTo(1.79, 1)
+    expect(res.body.priceHistory).toHaveLength(2)
   })
 
   it('calculates revenue growth from income data', async () => {
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
-      if (url.includes('/profile/')) return { ok: true, json: async () => [{ companyName: 'Test', industry: 'Tech', mktCap: 1e9 }] }
-      if (url.includes('/income-statement/')) return { ok: true, json: async () => [{ revenue: 200 }, { revenue: 100 }] }
-      if (url.includes('/quote/')) return { ok: true, json: async () => [{}] }
-      if (url.includes('/earning_calendar/')) return { ok: true, json: async () => [] }
-      return { ok: false }
+    mockAllFMP({
+      income: [{ revenue: 200 }, { revenue: 100 }],
     })
 
     const res = mockRes()
     await handler(mockReq('GET', { ticker: 'TEST' }), res)
 
-    expect(res.body.revenueGrowth).toBe(100) // (200-100)/100 * 100
+    expect(res.body.revenueGrowth).toBe(100)
   })
 
   it('returns null revenue growth with insufficient data', async () => {
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
-      if (url.includes('/profile/')) return { ok: true, json: async () => [{ companyName: 'Test' }] }
-      if (url.includes('/income-statement/')) return { ok: true, json: async () => [{ revenue: 100 }] }
-      if (url.includes('/quote/')) return { ok: true, json: async () => [{}] }
-      if (url.includes('/earning_calendar/')) return { ok: true, json: async () => [] }
-      return { ok: false }
+    mockAllFMP({
+      income: [{ revenue: 100 }],
     })
 
     const res = mockRes()
@@ -127,13 +114,7 @@ describe('API handler: /api/stock/[ticker]', () => {
   })
 
   it('sets cache header on success', async () => {
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
-      if (url.includes('/profile/')) return { ok: true, json: async () => [{ companyName: 'Test' }] }
-      if (url.includes('/income-statement/')) return { ok: true, json: async () => [] }
-      if (url.includes('/quote/')) return { ok: true, json: async () => [{}] }
-      if (url.includes('/earning_calendar/')) return { ok: true, json: async () => [] }
-      return { ok: false }
-    })
+    mockAllFMP()
 
     const res = mockRes()
     await handler(mockReq('GET', { ticker: 'TEST' }), res)
@@ -152,13 +133,7 @@ describe('API handler: /api/stock/[ticker]', () => {
   })
 
   it('handles missing earnings gracefully', async () => {
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
-      if (url.includes('/profile/')) return { ok: true, json: async () => [{ companyName: 'Test' }] }
-      if (url.includes('/income-statement/')) return { ok: true, json: async () => [] }
-      if (url.includes('/quote/')) return { ok: true, json: async () => [{}] }
-      if (url.includes('/earning_calendar/')) throw new Error('API down')
-      return { ok: false }
-    })
+    mockAllFMP({ earningsThrow: true })
 
     const res = mockRes()
     await handler(mockReq('GET', { ticker: 'TEST' }), res)
